@@ -1,0 +1,31 @@
+substitutions:
+  _REGION: us-central1
+  _REPO: demo
+  _IMAGE: frontend
+  _NAMESPACE: dev
+
+steps:
+  # 1) Set kube context to your cluster (Autopilot or Standard)
+  - name: gcr.io/cloud-builders/gcloud
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        gcloud container clusters get-credentials gke-multienv-cluster \
+          --region ${_REGION} --project $PROJECT_ID
+        kubectl create ns ${_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+
+  # 2) Substitute PROJECT_ID & COMMIT_SHA into manifests then apply
+  - name: gcr.io/cloud-builders/gcloud
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        for f in k8s/*.yaml; do
+          sed -e "s/PROJECT_ID/$PROJECT_ID/g" \
+              -e "s/COMMIT_SHA/$COMMIT_SHA/g" "$f" | kubectl apply -f -
+        done
+
+  # 3) Wait for rollout
+  - name: gcr.io/cloud-builders/kubectl
+    args: ['rollout', 'status', 'deploy/frontend', '-n', '${_NAMESPACE}', '--timeout=90s']
