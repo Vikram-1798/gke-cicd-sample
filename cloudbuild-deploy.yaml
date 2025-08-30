@@ -1,31 +1,40 @@
+# cloudbuild-deploy.yaml
 substitutions:
   _REGION: us-central1
   _REPO: demo
   _IMAGE: frontend
+  _CLUSTER: gke-cicd-demo
+  _CLUSTER_REGION: us-central1
   _NAMESPACE: dev
+  # pass COMMIT_SHA or BUILD_ID from the trigger; here we default to BUILD_ID
+  _TAG: $BUILD_ID
 
 steps:
-  # 1) Set kube context to your cluster (Autopilot or Standard)
-  - name: gcr.io/cloud-builders/gcloud
+  # Get GKE credentials
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     entrypoint: bash
     args:
-      - -c
+      - -lc
       - |
-        gcloud container clusters get-credentials gke-multienv-cluster \
-          --region ${_REGION} --project $PROJECT_ID
-        kubectl create ns ${_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+        gcloud container clusters get-credentials "${_CLUSTER}" --region "${_CLUSTER_REGION}"
 
-  # 2) Substitute PROJECT_ID & COMMIT_SHA into manifests then apply
-  - name: gcr.io/cloud-builders/gcloud
+  # Replace image tag inside the deployment manifest and apply both files
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     entrypoint: bash
     args:
-      - -c
+      - -lc
       - |
-        for f in k8s/*.yaml; do
-          sed -e "s/PROJECT_ID/$PROJECT_ID/g" \
-              -e "s/COMMIT_SHA/$COMMIT_SHA/g" "$f" | kubectl apply -f -
-        done
+        set -e
+        IMAGE="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_IMAGE}:${_TAG}"
+        echo "Using image: $IMAGE"
 
-  # 3) Wait for rollout
-  - name: gcr.io/cloud-builders/kubectl
-    args: ['rollout', 'status', 'deploy/frontend', '-n', '${_NAMESPACE}', '--timeout=90s']
+        # Render to a temp file (keeps repo clean)
+        mkdir -p rendered
+        # Replace only the image value; assumes a single container line with 'image:' in the deployment
+        sed "s|image: .*|image: ${IMAGE}|" k8s/frontend-deployment.yaml > rendered/frontend-deployment.yaml
+        cp k8s/frontend-service.yaml rendered/frontend-service.yaml
+
+        kubectl create ns "${_NAMESPACE}" --dry-run=client -o yaml | kubectl apply -f -
+        kubectl -n "${_NAMESPACE}" apply -f rendered/frontend-deployment.yaml
+        kubectl -n "${_NAMESPACE}" apply -f rendered/frontend-service.yaml
+        kubectl -n "${_NAMESPACE}" rollout status deploy/frontend --timeout=180s
