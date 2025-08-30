@@ -7,18 +7,19 @@ import (
 	"os"
 )
 
-func main() {
-	port := getEnv("PORT", "8080")
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Hello from CI/CD!
-	})
-	log.Printf("listening on :%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+func handler(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, "Hello from CI/CD!
 }
 
-func getEnv(k, d string) string {
-	if v := os.Getenv(k); v != "" {
-		return v
+func main() {
+	port := "8080"
+	if p := os.Getenv("PORT"); p != "" {
+		port = p
 	}
-	return d
+
+	http.HandleFunc("/", handler)
+	log.Printf("Starting server on port %s...\n", port)
+	if err := http.ListenAndServe(":"+port, nil); err != nil {
+		log.Fatal(err)
+	}
 }
