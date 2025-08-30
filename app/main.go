@@ -10,7 +10,7 @@ import (
 func main() {
 	port := getEnv("PORT", "8080")
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Hello from CI build!
+		fmt.Fprintf(w, "Hello from CI/CD!
 	})
 	log.Printf("listening on :%s", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
